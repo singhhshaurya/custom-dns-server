@@ -24,7 +24,8 @@
 
 
 ## DNS COMMUNICATION FORMAT
-- All communications in the DNS protocol are carried in a single format called a "message". Each message consists of 5 sections: header, question, answer, authority, and an additional space.
+- All communications in the DNS protocol (both dns request and dns reply)are carried in a single format called a "message". Each message consists of 5 sections: header, question, answer, authority, and an additional space.
+  
 - 1. Header: Contains metadata about the message, such as the type of query, response code, and flags.
 - 2. Question: Contains the domain name being queried and the type of record requested (e.g., A, AAAA, MX).
 - 3. Answer: Contains the resource records that answer the query, including the IP address
@@ -55,4 +56,19 @@
 - Integers are encoded in *big endian* (network byte order) format, meaning the most significant byte is stored first.
 
 https://github.com/EmilHernvall/dnsguide/blob/b52da3b32b27c81e5c6729ac14fe01fef8b1b593/chapter1.md contains a detailed explanation of the DNS protocol.
+
+### QUESTION SECTION STRUCTURE
+- The question section contains the domain name being queried and the type of record requested. It consists of the following fields:
+1. **QNAME**: The domain name being queried, represented as a sequence of labels. Each label is prefixed with its length, and the entire domain name is terminated with a zero-length label (0x00). Its VARIABLE LENGTH.
+   
+2. **QTYPE**: A 16-bit field specifying the type of record being requested (e.g., A, AAAA, MX). 16 bits/2bytes
+
+3. **QCLASS**: A 16-bit field specifying the class of the query. The most common class is IN (Internet), which has a value of 1. 16 bits/2bytes
+
+-EXAMPLE: for the domain name "www.google.com", the QNAME would be represented as follows:
+*\x03www\x06google\x03com\x00* : \x03 indicates the length of the first label "www", \x06 indicates the length of the second label "google", \x03 indicates the length of the third label "com", and \x00 indicates the end of the domain name.
+
+IN HEX: 03 77 77 77 06 67 6F 6F 67 6C 65 03 63 6F 6D 00
+
+- Each '.' divides the url to labels, and each label is prefixed with its length. The total length of the QNAME field is variable, depending on the length of the domain name being queried.
 

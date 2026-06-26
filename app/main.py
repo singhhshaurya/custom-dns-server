@@ -36,7 +36,7 @@ def main():
         ra = 0 # 1
         z = 0 # 3
         rcode = 0 # 4
-        qdcount = 0 # 16
+        qdcount = 1 # 16
         ancount = 0 # 16
         nscount = 0 # 16
         arcount = 0 # 16
@@ -44,19 +44,29 @@ def main():
         # 6 16-bits block banenge, 12 bytes.
         # 1 block khud se banana padega pura of all the remaining ones.
 
-        block = (qr<<15) + (opcode<<11)  + (aa<<10) + (tc<<9) + (rd<<8) + (ra<<7) + (z<<4) + rd
+        block = (qr<<15) | (opcode<<11)  | (aa<<10) | (tc<<9) | (rd<<8) | (ra<<7) | (z<<4) | rcode
         return (int16_to_bytes(id) + int16_to_bytes(block) + int16_to_bytes(qdcount) + int16_to_bytes(ancount) + int16_to_bytes(nscount) 
                 + int16_to_bytes(arcount))
 
 
+    def generate_question(message):
+        print(message)
+        labels = []
+        type = 1 # 16 bits
+        CLASS = 1 # 16 bits
+    
+        return message + int16_to_bytes(type) + int16_to_bytes(CLASS)
+
     while True:
         try:
             buf, source = udp_socket.recvfrom(512)
-    
+            print(f"Message received from {source}. \n{buf}\n")
+            header = generate_header(buf[:12]) # 12 bytes
+            question = generate_question(buf[12:])
 
-            header = generate_header(buf)
-
-            response = header
+            response = header + question
+            print(f"Response: {response}")
+            print("\n")
     
             udp_socket.sendto(response, source)
 
