@@ -51,7 +51,9 @@ def main():
 
     def generate_question(message):
         print(message)
-        labels = []
+        questions = []
+
+        
         type = 1 # 16 bits
         CLASS = 1 # 16 bits
     
