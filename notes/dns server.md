@@ -94,7 +94,12 @@ QNAME    variable length
 QTYPE    2 bytes
 QCLASS   2 bytes
 
-1. **QNAME**: The domain name being queried, represented as a sequence of labels. Each label is prefixed with its length, and the entire domain name is terminated with a zero-length label (0x00). Its VARIABLE LENGTH.
+1. **QNAME**: The domain name being queried, represented as a sequence of labels. Each label is prefixed with a one byte length, and the entire domain name is terminated with a zero-length label (0x00). Its VARIABLE LENGTH.
+
+Each label can be only upto 63 bytes long, and the total length of the domain name (including label lengths and the terminating zero) cannot 
+exceed 255 bytes as only 1 byte is used to represent total length.
+Label is 63 bytes because top 2 bits of length byte are reserved for special encodings, especially compression pointers.
+
    
 2. **QTYPE**: A 16-bit field specifying the type of record being requested (e.g., A, AAAA, MX). 16 bits/2bytes
 
@@ -103,7 +108,7 @@ QCLASS   2 bytes
 - One complete record of qname, qtype, and qclass is called a "question". The number of questions in the message is specified by the QDCOUNT field in the header section.
   
 -EXAMPLE: for the domain name "www.google.com", the QNAME would be represented as follows:
-*\x03www\x06google\x03com\x00* : \x03 indicates the length of the first label "www", \x06 indicates the length of the second label "google", \x03 indicates the length of the third label "com", and \x00 indicates the end of the domain name.
+*\x03www\x06google\x03com\x00* + *\x00\x01\x00\x01* : \x03 indicates the length of the first label "www", \x06 indicates the length of the second label "google", \x03 indicates the length of the third label "com", and \x00 indicates the end of the domain name.
 
 IN HEX: 03 77 77 77 06 67 6F 6F 67 6C 65 03 63 6F 6D 00
 
@@ -122,7 +127,7 @@ RDLENGTH  2 bytes
 RDATA     variable length
 
 
-- 1. *NAME*: The domain name to which this resource record pertains. It is represented in the same format as QNAME in the question section. VARIABLE LENGTH
+- 1. *NAME*: The domain name to which this resource record pertains. It is represented in the same format as QNAME in the question section. VARIABLE LENGTH. example: *\x03www\x06google\x03com\x00*. copy paste from question section.
   
 - 2. *TYPE*: A 16-bit field specifying the type of record (e.g., A, AAAA, MX). 16 bits/2bytes
   

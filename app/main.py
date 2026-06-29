@@ -49,24 +49,67 @@ def main():
                 + int16_to_bytes(arcount))
 
 
-    def generate_question(message):
+    def parse_questions(message, qcount):
         print(message)
-        questions = []
 
-        
-        type = 1 # 16 bits
-        CLASS = 1 # 16 bits
+        questions = [] # contains [[labels], qtype, qclass]]
+        records = [] # contains [labels+qtype+qclass]
+        ptr = 0
+        prev_record = 0
+
+        for i in range(qcount):
+            length = message[ptr]
+            labels = []
+            while length != 0:
+                print(length)
+                labels.append(message[ptr+1:ptr+length])
+                ptr += length + 1
+                length = message[ptr] 
+            
+            questions.append([labels, message[ptr+1:ptr+3], message[ptr+3:ptr+5]]) # last 4 bytes are for qtype and qclass
+            ptr += 5 # NULL byte + 4 bytes skip (qtype and qclass)
+            records.append(message[prev_record:ptr])
+            prev_record = ptr
+
+        return questions, records
+
+    def parse_question(question):
+
+        ttl = 60 # 4 bytes, 32 bits.
+        rdlength = 4 # 2 bytes, 16 bits
+        data = b"\x08\x08\x08\x08" # random ip address. this is 8.8.8.8
+
+        ttl = int16_to_bytes(ttl>>16) + int16_to_bytes(ttl) # converting to 4 bytes.
+        return ttl, int16_to_bytes(rdlength), data
+
+
+    def generate_answers(records):
+        answer = b''
+        for question in records:
+            ttl, rdlength, data = parse_question(question)
+            answer += question + ttl + rdlength + data
+
+        return answer
+
+
+
+
+
     
-        return message + int16_to_bytes(type) + int16_to_bytes(CLASS)
+        return message # + int16_to_bytes(type) + int16_to_bytes(CLASS)
 
     while True:
         try:
             buf, source = udp_socket.recvfrom(512)
             print(f"Message received from {source}. \n{buf}\n")
-            header = generate_header(buf[:12]) # 12 bytes
-            question = generate_question(buf[12:])
 
-            response = header + question
+            header = generate_header(buf[:12]) # 12 bytes
+            question_section = buf[12:]
+            
+            questions, records = parse_questions(question_section, 1)
+            answer_section = generate_answers(records)
+            response = header + question_section + answer_section
+            print(f"Header:{header}\nquestions = {question_section}\nanswers = {answer_section}")
             print(f"Response: {response}")
             print("\n")
     
