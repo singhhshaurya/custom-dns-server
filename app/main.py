@@ -17,6 +17,9 @@ def main():
     # 3. sendto() Send data to the socket. It requires the data and the address to send to.
     # 4. close() Close the socket when done.
     # 5. settimeout() Set a timeout for blocking socket operations.
+    
+    # OTHER POINTS
+    # 1. single byte is automatically converted to int. to convert series of bytes use int.frombytes()
 
     def int16_to_bytes(n: int) -> bytes: 
         high = (n >> 8) & 0xFF # retrieves the high 8 bits of the 16 bit integer we put. 0xFF = 255 = 11111111 in binary.
@@ -25,19 +28,22 @@ def main():
                                   # the data MUST BE OF 1 byte size. So we use a list of 2 elements, each of which is 1 byte long.
                                   # thats why we divided 16 bits to 2 8 bit numbers.  
 
-    def generate_header(request_message):
-        # 
-        id = 1234 # 16 bits.
+    def generate_header(request_header):
+        
+        id = int.from_bytes(request_header[:2]) # 16 bits. 
         qr = 1 # 1 
-        opcode = 0 # 4
+        opcode = (request_header[2] & 0x7f)>>3  # 4. EXTRACTION: extract the 3rd byte. get first 7 bits. right shift 3 times.
         aa = 0 # 1
         tc = 0 # 1
         rd = 0 # 1
-        ra = 0 # 1
+        ra = (request_header[1] & 1) # 1
         z = 0 # 3
-        rcode = 0 # 4
+
+        if opcode == 0: rcode = 0 # no error. (rcode is 4 bits.)
+        else: rcode = 4 # not implemented
+
         qdcount = 1 # 16
-        ancount = 0 # 16
+        ancount = 1 # 16
         nscount = 0 # 16
         arcount = 0 # 16
 
@@ -50,8 +56,6 @@ def main():
 
 
     def parse_questions(message, qcount):
-        print(message)
-
         questions = [] # contains [[labels], qtype, qclass]]
         records = [] # contains [labels+qtype+qclass]
         ptr = 0
@@ -61,7 +65,6 @@ def main():
             length = message[ptr]
             labels = []
             while length != 0:
-                print(length)
                 labels.append(message[ptr+1:ptr+length])
                 ptr += length + 1
                 length = message[ptr] 
@@ -104,10 +107,12 @@ def main():
             print(f"Message received from {source}. \n{buf}\n")
 
             header = generate_header(buf[:12]) # 12 bytes
+            print("GOT THE HEADER!")
             question_section = buf[12:]
             
             questions, records = parse_questions(question_section, 1)
             answer_section = generate_answers(records)
+
             response = header + question_section + answer_section
             print(f"Header:{header}\nquestions = {question_section}\nanswers = {answer_section}")
             print(f"Response: {response}")
