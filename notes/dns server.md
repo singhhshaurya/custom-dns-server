@@ -148,6 +148,8 @@ RDATA     variable length
 - 6. *RDATA*: The actual data of the resource record, which varies depending on the TYPE of the record. For example, for an A record, RDATA contains the IPv4 address (4 bytes), while for an AAAA record, it contains the IPv6 address (16 bytes). VARIABLE LENGTH
 
 
-
+- One question may have 0, 1 or even multiple answers. The number of answers in the message is specified by the ANCOUNT field in the header section.
+- Answers are provided by authoritative name servers or cached by resolvers. If the answer is not found, the server may return a response indicating that the domain does not exist (NXDOMAIN) or provide a referral to another name server.
+- 
 
 

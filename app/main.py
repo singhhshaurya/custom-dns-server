@@ -1,5 +1,6 @@
 import socket
-
+from typing import List, Tuple
+import traceback
 
 def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -28,102 +29,117 @@ def main():
                                   # the data MUST BE OF 1 byte size. So we use a list of 2 elements, each of which is 1 byte long.
                                   # thats why we divided 16 bits to 2 8 bit numbers.  
 
-    def generate_header(request_header):
+
+    def generate_header(request_header) -> dict:
         
         id = int.from_bytes(request_header[:2]) # 16 bits. 
         qr = 1 # 1 
         opcode = (request_header[2] & 0x7f)>>3  # 4. EXTRACTION: extract the 3rd byte. get first 7 bits. right shift 3 times.
         aa = 0 # 1
         tc = 0 # 1
-        rd = 0 # 1
-        ra = (request_header[1] & 1) # 1
+        rd = (request_header[2] & 1) # 1
+        ra = 0 # 1
         z = 0 # 3
 
         if opcode == 0: rcode = 0 # no error. (rcode is 4 bits.)
         else: rcode = 4 # not implemented
 
-        qdcount = 1 # 16
-        ancount = 1 # 16
+        qdcount = 0 # 16. initially all zero. we increase as we parse.
+        ancount = 0 # 16
         nscount = 0 # 16
         arcount = 0 # 16
 
         # 6 16-bits block banenge, 12 bytes.
         # 1 block khud se banana padega pura of all the remaining ones.
-
-        block = (qr<<15) | (opcode<<11)  | (aa<<10) | (tc<<9) | (rd<<8) | (ra<<7) | (z<<4) | rcode
-        return (int16_to_bytes(id) + int16_to_bytes(block) + int16_to_bytes(qdcount) + int16_to_bytes(ancount) + int16_to_bytes(nscount) 
-                + int16_to_bytes(arcount))
+        return{"id":id, "qr":qr, "opcode":opcode, "aa":aa, "tc":tc, "rd":rd, "ra":ra, "z":z, "rcode":rcode, "qdcount":qdcount, "ancount":ancount, "nscount":nscount, "arcount":arcount}
 
 
-    def parse_questions(message, qcount):
-        questions = [] # contains [[labels], qtype, qclass]]
+
+    def questions_generator(query_question_section) -> List:
         records = [] # contains [labels+qtype+qclass]
+
+        def fetch_record(ptr):
+            record = b""
+            while query_question_section[ptr] != 0:
+                if query_question_section[ptr]>>6 == 3: # first bits are 11, compression. its a pointer.
+                    ptr = ((query_question_section[ptr] & 0x3f) << 8) + query_question_section[ptr+1] # 2 bytes is the pointer excluding first 2 bits.
+                    record += fetch_record(ptr)
+                    ptr += 1
+                    break
+                else:
+                    length = query_question_section[ptr]
+                    record += query_question_section[ptr:length]
+                    ptr += length + 1
+
+            record += query_question_section[ptr+1:ptr+5] # adding qtype and qclass, both 2 bytes.
+            return record, ptr + 5
+        
         ptr = 0
-        prev_record = 0
+        while ptr < len(query_question_section):
+            record, ptr = fetch_record(ptr)
+            records.append(record)
+            header["qdcount"] += 1
 
-        for i in range(qcount):
-            length = message[ptr]
-            labels = []
-            while length != 0:
-                labels.append(message[ptr+1:ptr+length])
-                ptr += length + 1
-                length = message[ptr] 
-            
-            questions.append([labels, message[ptr+1:ptr+3], message[ptr+3:ptr+5]]) # last 4 bytes are for qtype and qclass
-            ptr += 5 # NULL byte + 4 bytes skip (qtype and qclass)
-            records.append(message[prev_record:ptr])
-            prev_record = ptr
+        return records
 
-        return questions, records
+                    
 
     def parse_question(question):
+        answers = []
 
         ttl = 60 # 4 bytes, 32 bits.
         rdlength = 4 # 2 bytes, 16 bits
         data = b"\x08\x08\x08\x08" # random ip address. this is 8.8.8.8
 
         ttl = int16_to_bytes(ttl>>16) + int16_to_bytes(ttl) # converting to 4 bytes.
-        return ttl, int16_to_bytes(rdlength), data
+        rdlength = int16_to_bytes(rdlength)
+        answers.append([ttl, rdlength, data])
+        return answers
+
 
 
     def generate_answers(records):
         answer = b''
         for question in records:
-            ttl, rdlength, data = parse_question(question)
-            answer += question + ttl + rdlength + data
+            answers = parse_question(question) # question processed by name servers. 
+            for ttl, rdlength, data in answers:
+                answer += question + ttl + rdlength + data
+                header['ancount'] += 1
 
         return answer
-
-
-
-
-
     
-        return message # + int16_to_bytes(type) + int16_to_bytes(CLASS)
 
     while True:
         try:
             buf, source = udp_socket.recvfrom(512)
-            print(f"Message received from {source}. \n{buf}\n")
+            #  print(f"Message received from {source}. \n{buf}\n")
+            question_section = buf[12:]
 
             header = generate_header(buf[:12]) # 12 bytes
-            print("GOT THE HEADER!")
-            question_section = buf[12:]
             
-            questions, records = parse_questions(question_section, 1)
-            answer_section = generate_answers(records)
+            questions = questions_generator(question_section)
 
-            response = header + question_section + answer_section
+            answer_section = generate_answers(questions)
+
+            
+            block = ((header['qr']<<15) | (header['opcode']<<11)  | (header['aa']<<10) | (header['tc']<<9) | (header['rd']<<8) | 
+                     (header['ra']<<7) | (header['z']<<4) | header['rcode'])     
+            
+            header_section = (int16_to_bytes(header['id']) + int16_to_bytes(block) + int16_to_bytes(header['qdcount']) 
+                              + int16_to_bytes(header['ancount']) + int16_to_bytes(header['nscount'])+ int16_to_bytes(header['arcount']))
+            
+            response = header_section + question_section + answer_section
             print(f"Header:{header}\nquestions = {question_section}\nanswers = {answer_section}")
-            print(f"Response: {response}")
             print("\n")
     
+
             udp_socket.sendto(response, source)
 
 
 
         except Exception as e:
             print(f"Error receiving data: {e}")
+            # traceback.print_exc()
             break
 
 
