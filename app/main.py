@@ -32,7 +32,7 @@ def main():
 
     def generate_header(request_header) -> dict:
         
-        id = int.from_bytes(request_header[:2]) # 16 bits. 
+        id_ = int.from_bytes(request_header[:2], byteorder='big', signed=False) # 16 bits. 
         qr = 1 # 1 
         opcode = (request_header[2] & 0x7f)>>3  # 4. EXTRACTION: extract the 3rd byte. get first 7 bits. right shift 3 times.
         aa = 0 # 1
@@ -51,7 +51,7 @@ def main():
 
         # 6 16-bits block banenge, 12 bytes.
         # 1 block khud se banana padega pura of all the remaining ones.
-        return{"id":id, "qr":qr, "opcode":opcode, "aa":aa, "tc":tc, "rd":rd, "ra":ra, "z":z, "rcode":rcode, "qdcount":qdcount, "ancount":ancount, "nscount":nscount, "arcount":arcount}
+        return{"id":id_, "qr":qr, "opcode":opcode, "aa":aa, "tc":tc, "rd":rd, "ra":ra, "z":z, "rcode":rcode, "qdcount":qdcount, "ancount":ancount, "nscount":nscount, "arcount":arcount}
 
 
 
@@ -62,16 +62,17 @@ def main():
             record = b""
             while query_question_section[ptr] != 0:
                 if query_question_section[ptr]>>6 == 3: # first bits are 11, compression. its a pointer.
-                    ptr = ((query_question_section[ptr] & 0x3f) << 8) + query_question_section[ptr+1] # 2 bytes is the pointer excluding first 2 bits.
-                    record += fetch_record(ptr)
-                    ptr += 1
+                    ptr2 = ((query_question_section[ptr] & 0x3f) << 8) | query_question_section[ptr+1] - 12 # 2 bytes is the pointer excluding first 2 bits.
+                    record += fetch_record(ptr2)[0][:-4] # only take the domain name. 
+                    ptr += 2
                     break
+
                 else:
                     length = query_question_section[ptr]
-                    record += query_question_section[ptr:length]
+                    record += query_question_section[ptr:ptr+length+1]
                     ptr += length + 1
 
-            record += query_question_section[ptr+1:ptr+5] # adding qtype and qclass, both 2 bytes.
+            record += query_question_section[ptr:ptr+5] # adding qtype and qclass, both 2 bytes.
             return record, ptr + 5
         
         ptr = 0
@@ -113,11 +114,12 @@ def main():
         try:
             buf, source = udp_socket.recvfrom(512)
             #  print(f"Message received from {source}. \n{buf}\n")
-            question_section = buf[12:]
+            query_question_section = buf[12:]
 
             header = generate_header(buf[:12]) # 12 bytes
             
-            questions = questions_generator(question_section)
+            questions = questions_generator(query_question_section)
+            question_section = b"".join(questions)
 
             answer_section = generate_answers(questions)
 
@@ -139,7 +141,7 @@ def main():
 
         except Exception as e:
             print(f"Error receiving data: {e}")
-            # traceback.print_exc()
+            traceback.print_exc()
             break
 
 
