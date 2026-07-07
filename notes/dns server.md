@@ -107,8 +107,11 @@ QCLASS   2 bytes
 
 1. **QNAME**: The domain name being queried, represented as a sequence of labels. Each label is prefixed with a one byte length, and the entire domain name is terminated with a zero-length label (0x00). Its VARIABLE LENGTH.
 
-Each label can be only upto 63 bytes long, and the total length of the domain name (including label lengths and the terminating zero) cannot 
-exceed 255 bytes as only 1 byte is used to represent total length.
+
+Each label can be up to 63 bytes long, because the label length octet uses only the lower 6 bits for the label length. The top 2 bits are reserved for special encodings, especially compression pointers.
+
+The full domain name in DNS wire format can be up to 255 octets long, including each label’s length octet and the terminating zero octet. DNS defines that limit in the protocol.
+
 Label is 63 bytes because top 2 bits of length byte are reserved for special encodings, especially compression pointers.
 
    
@@ -152,4 +155,35 @@ RDATA     variable length
 - Answers are provided by authoritative name servers or cached by resolvers. If the answer is not found, the server may return a response indicating that the domain does not exist (NXDOMAIN) or provide a referral to another name server.
 - 
 
+### Authority Section
+- The authority section contains a list of RRs that point to authoritative name servers for the domain being queried. These records help the resolver find the authoritative server if it does not have the answer in its cache. The number of authority records in the message is specified by the NSCOUNT field in the header section.
+  
+- Common types of records:
+- 1. NS (Name Server) records: These records indicate the authoritative name servers for a domain. They provide the resolver with information about which servers to query for further resolution.
+- 2. SOA (Start of Authority) records: These records provide information about the authoritative name server for a domain, including the primary server, contact email, and various timing parameters.
 
+STRUCTURE
+
+NAME     variable length
+TYPE     2 bytes
+CLASS    2 bytes
+TTL     4 bytes
+RDLENGTH 2 bytes
+RDATA   variable length
+
+
+example:
+example.com. SOA IN TTL 1800
+MNAME: elliott.ns.cloudflare.com.
+RNAME: dns.cloudflare.com.
+
+Here, 
+- MNAME is the primary name server for the domain, and RNAME is the email address of the domain administrator (with the '@' replaced by a dot). The TTL value indicates how long this record can be cached by resolvers.
+  
+  
+### Additional Section
+- The additional section contains a list of RRs that provide supplementary information related to the query. These records can include IP addresses of name servers, mail servers, or other relevant data. The number of additional records in the message is specified by the ARCOUNT field in the header section.
+  
+
+## DNS UPSTREAM RESOLVERS
+- DNS upstream resolvers are external DNS servers that a local DNS server can query to resolve domain names on behalf of clients. They are typically provided by ISPs or public DNS services (like Google Public DNS or Cloudflare). When a local DNS server receives a query for a domain name it does not have in its cache, it forwards the query to an upstream resolver to obtain the answer.
