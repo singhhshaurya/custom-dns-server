@@ -3,43 +3,22 @@ from typing import List, Tuple
 import traceback
 import sys
 import random
-
+import threading
 
 def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    print("Logs from your program will appear here!")
-    for i in sys.argv:
-        print(i)
+    print("Server has started! ya bitch\n")
 
-
-    # TODO: Uncomment the code below to pass the first stage
-    #
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # AF_INET: IPv4, SOCK_DGRAM: UDP. for TCP, use SOCK_STREAM.
-    udp_socket.bind(("127.0.0.1", 2053)) # 2053 port randomly selected.
-
-
-    # In UDP socket programming, there are only limited operations.
-    # 1. bind() Bind the socket to an address and port (done above).
-    # 2. recvfrom() Receive data from the socket. It returns a tuple (data, address). No connection prior required.
-    # 3. sendto() Send data to the socket. It requires the data and the address to send to.
-    # 4. close() Close the socket when done.
-    # 5. settimeout() Set a timeout for blocking socket operations.
-    
-    # OTHER POINTS
-    # 1. single byte is automatically converted to int. to convert series of bytes use int.frombytes()
 
     def int16_to_bytes(n: int) -> bytes: 
         high = (n >> 8) & 0xFF # retrieves the high 8 bits of the 16 bit integer we put. 0xFF = 255 = 11111111 in binary.
         low = n & 0xFF  # lower 8 bits.
-        return bytes([high, low]) # bytes() function takes an iterable of data and returns a byte object.
-                                  # the data MUST BE OF 1 byte size. So we use a list of 2 elements, each of which is 1 byte long.
-                                  # thats why we divided 16 bits to 2 8 bit numbers.  
+        return bytes([high, low]) 
+
 
     def header_to_bytes(header:dict, **changed_fields) -> bytes:
 
         for i in changed_fields:
             header[i] = changed_fields[i]
-
 
         block = ((header['qr']<<15) | (header['opcode']<<11)  | (header['aa']<<10) | (header['tc']<<9) | (header['rd']<<8) | 
                      (header['ra']<<7) | (header['z']<<4) | header['rcode'])     
@@ -48,6 +27,7 @@ def main():
                               + int16_to_bytes(header['ancount']) + int16_to_bytes(header['nscount'])+ int16_to_bytes(header['arcount']))
         
         return header_section
+
 
     def generate_header(request_header) -> dict:
                 
@@ -105,7 +85,7 @@ def main():
 
                     
 
-    def resolve_question(question, start_pos):
+    def resolve_question(question, start_pos, header):
         upstream_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # not binded, free socket for sending data.
         upstream_socket.settimeout(3)
 
@@ -157,12 +137,11 @@ def main():
 
 
 
-
-    def generate_answers(records, start_pos):
+    def generate_answers(records, start_pos, header):
         final_answer = b''
         
         for question in records:
-            answer, ancount, nscount, arcount, rcode = resolve_question(question, start_pos) # question processed by name servers. 
+            answer, ancount, nscount, arcount, rcode = resolve_question(question, start_pos, header) # question processed by name servers. 
 
             if rcode != 0:
                 header['rcode'] = rcode
@@ -179,36 +158,51 @@ def main():
         return final_answer
     
 
+
+    def parse_dns_query(dns_query, source):
+        global query_count
+        with lock:
+            query_count += 1
+        
+        query_question_section = dns_query[12:]
+
+        header = generate_header(dns_query[:12]) # 12 bytes
+        questions = questions_generator(query_question_section)
+
+        question_section = b"".join(questions) # uncompressed.
+
+        answer_section = generate_answers(questions, 12 + len(question_section), header) # resolve questions one by one
+
+        header['qr'] = 1
+        header['ra'] = 1
+            
+        header_section = header_to_bytes(header)
+
+        response = header_section + question_section + answer_section
+        print(f"Header:{header}\nquestions = {question_section}\nanswers = {answer_section}")
+        print("\n")
+        print(f"Query: {buf}\n Response: {response}")
+        print("\n")
+
+        udp_socket.sendto(response, source)
+
+        with lock:
+            query_count -= 1
+
+
+
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # AF_INET: IPv4, SOCK_DGRAM: UDP. for TCP, use SOCK_STREAM.
+    udp_socket.bind(("127.0.0.1", 2053)) # 2053 port randomly selected.
+
+    global query_count
+    query_count = 0
+    lock = threading.Lock()
+
     while True:
         try:
             buf, source = udp_socket.recvfrom(512)
-            print(f"Message received from {source}. \n")
-
-            query_question_section = buf[12:]
-
-            header = generate_header(buf[:12]) # 12 bytes
-            questions = questions_generator(query_question_section)
-
-
-            question_section = b"".join(questions) # uncompressed.
-
-            answer_section = generate_answers(questions, 12 + len(question_section)) # resolve questions one by one
-    
-            header['qr'] = 1
-            header['ra'] = 1
-                
-            header_section = header_to_bytes(header)
-
-
-            response = header_section + question_section + answer_section
-            print(f"Header:{header}\nquestions = {question_section}\nanswers = {answer_section}")
-            print("\n")
-            print(f"Query: {buf}\n Response: {response}")
-            print("\n")
-
-            udp_socket.sendto(response, source)
-
-
+            thread = threading.Thread(target=parse_dns_query, args=(buf, source))
+            thread.start()
 
         except Exception as e:
             print(f"Error receiving data: {e}")
